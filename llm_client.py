@@ -57,8 +57,11 @@ def chat(messages: List[Dict[str, str]], model_name: str = DEFAULT_MODEL_NAME) -
 
         gemini_messages.append({"role": gemini_role, "parts": [{"text": content}]})
 
-    response = client.models.generate_content(
-        model=model_name,
-        contents=gemini_messages,
-    )
-    return response.text
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=gemini_messages,
+        )
+        return response.text
+    except Exception as e:
+        raise RuntimeError(f"Gemini API request failed: {str(e)}")

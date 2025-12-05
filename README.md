@@ -242,10 +242,23 @@ venv\Scripts\activate           # Windows
 pip install -r requirements.txt
 ```
 
+
 ### 4. Add your Gemini API key
 
+* Rename the **`sample_secrets.toml`** file to **`secrets.toml`** and add your API key:
+
+  * **Path**: `.streamlit/secrets.toml`
+  * Format:
+
+    ```toml
+    [general]
+    GOOGLE_API_KEY = "your_key_here"
+    ```
+
+* Or you can also add your Gemini API key as an environment variable
+
 ```bash
-export GOOGLE_API_KEY="your_key_here"
+set GOOGLE_API_KEY="your_key_here"
 ```
 
 ### 5. Run locally

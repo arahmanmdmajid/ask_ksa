@@ -46,7 +46,11 @@ def main() -> None:
     # ---------- LOAD RAG RESOURCES ----------
     # All heavy lifting (embedding model, FAISS index, chunks, metadata)
     # is now handled in data_loader.load_resources().
-    embed_model, index, all_chunks, all_chunks_metadata = load_resources()
+    try:
+        embed_model, index, all_chunks, all_chunks_metadata = load_resources()
+    except Exception as e:
+        st.error(f"❌ Failed to load resources: {str(e)}")
+        st.stop()
 
     # ---------- SESSION STATE INITIALIZATION ----------
     if "chat_history" not in st.session_state:
@@ -190,7 +194,7 @@ def main() -> None:
                 st.session_state.feedback.append(
                     {"question": user_input, "answer": answer, "label": "not_helpful"}
                 )
-                st.info("Thanks, we’ll use this to improve.")
+                st.info("Thanks, we'll use this to improve.")
 
     # ---------- CHAT HISTORY / FEEDBACK PANEL ----------
     st.markdown("---")

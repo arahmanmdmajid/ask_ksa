@@ -36,13 +36,15 @@ def load_resources():
     """
     _check_files_exist([INDEX_PATH, CHUNKS_PATH, META_PATH])
 
-    # Load chunks
-    with open(CHUNKS_PATH, "r", encoding="utf-8") as f:
-        all_chunks = json.load(f)
+    # Load chunks and metadata with error handling
+    try:
+        with open(CHUNKS_PATH, "r", encoding="utf-8") as f:
+            all_chunks = json.load(f)
 
-    # Load metadata
-    with open(META_PATH, "r", encoding="utf-8") as f:
-        all_chunks_metadata = json.load(f)
+        with open(META_PATH, "r", encoding="utf-8") as f:
+            all_chunks_metadata = json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        raise ValueError(f"Failed to load JSON files: {str(e)}")
 
     # Load FAISS index
     index = faiss.read_index(str(INDEX_PATH))

@@ -30,3 +30,6 @@ Thumbs.db
 # Ignore other temporary files
 *.bak
 *.swp
+
+# Ignore the Streamlit secrets file
+.streamlit/secrets.toml

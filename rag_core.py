@@ -134,7 +134,10 @@ def answer_question(
     }
     messages.append(user_message)
 
-    # 6) Call LLM
-    reply = llm_chat(messages)
+    # 6) Call LLM with error handling
+    try:
+        reply = llm_chat(messages)
+    except Exception as e:
+        raise RuntimeError(f"LLM API call failed: {str(e)}")
 
     return reply, retrieved
