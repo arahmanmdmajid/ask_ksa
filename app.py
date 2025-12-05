@@ -5,6 +5,7 @@ import streamlit as st
 
 from data_loader import load_resources
 from rag_core import answer_question, is_urdu_text
+from utils import set_seeds
 
 # We still keep BASE_DIR here only for UI assets (e.g., bot avatar image).
 BASE_DIR = Path(__file__).resolve().parent
@@ -16,6 +17,10 @@ def render_urdu(text: str) -> None:
 
 
 def main() -> None:
+
+    # Set the random seed for reproducibility
+    set_seeds(42)
+    
     # ---------- PAGE CONFIG & GLOBAL STYLING ----------
     st.set_page_config(page_title="AskKSA Chatbot", page_icon="🇸🇦")
 
