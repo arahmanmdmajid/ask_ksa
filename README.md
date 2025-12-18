@@ -7,7 +7,7 @@
 <p align="center">
   <strong>A modern modular RAG-powered assistant for Iqama, visa and Absher guidance.</strong>
   <br />
-  Bilingual • Accurate • Fast • Modular Architecture
+  Bilingual • Grounded • Fast • Modular Architecture
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
   <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python&logoColor=white" />
   <img src="https://img.shields.io/badge/Built%20with-Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" />
   <img src="https://img.shields.io/badge/AI-Gemini%202.5%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white" />
-  <img src="https://img.shields.io/badge/Vector%20DB-FAISS-009688?style=for-the-badge&logo=facebook&logoColor=white" />
+  <img src="https://img.shields.io/badge/Vector%20DB-Chroma-009688?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Embeddings-BGE--M3-6C63FF?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Hosted%20on-Streamlit%20Cloud-0F172A?style=for-the-badge&logo=cloudflare&logoColor=white" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" />
@@ -39,9 +39,11 @@
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
+- [Data Ingestion & Vector DB](#data-ingestion--vector-db)
 - [Modular Project Structure](#modular-project-structure)
 - [Installation & Local Setup](#installation--local-setup)
 - [Live Demo](#live-demo)
+- [Safety & Limitations](#safety--limitations)
 
 ---
 
@@ -56,14 +58,19 @@
 - MOI processes
 - Government portal guidance
 
-The system ensures answers are:
+The system aims to make answers:
 
-✔ Grounded in validated Absher/official-source content  
+✔ Grounded in curated Saudi government / expat content  
 ✔ Bilingual (English + Urdu)  
 ✔ Structured, accurate, and easy to follow  
-✔ Accessible through a clean chat interface  
+✔ Accessible through a clean Streamlit chat interface  
 
-The app uses **Gemini 2.5 Flash**, FAISS vector indexing, and a clean, modular Python codebase built with Streamlit.
+Under the hood, the app uses:
+
+- **BGE-M3** sentence-transformer embeddings  
+- A **Chroma** vector database for semantic retrieval  
+- **Google Gemini 2.5 Flash** for answer generation  
+- A modular RAG pipeline built in Python/Streamlit :contentReference[oaicite:0]{index=0}  
 
 ---
 
@@ -73,35 +80,37 @@ Saudi expats and residents often struggle with:
 
 - Conflicting information about government services  
 - Portal navigation issues  
-- Confusion around document requirements  
-- Step-by-step processes scattered across websites  
-- Language accessibility (English/Urdu)
+- Confusion around required documents and fees  
+- Step-by-step processes scattered across multiple websites  
+- Language accessibility (English/Urdu vs mostly Arabic portals)
 
 **AskKSA**:
 
-- Centralizes accurate service information  
-- Answers using *your curated dataset only*  
-- Supports multilingual users  
-- Provides fast, reliable guidance with sources  
+- Centralizes curated service information  
+- Answers using *only* the curated dataset + vector DB  
+- Supports English & Urdu with native RTL Urdu rendering  
+- Provides fast, reliable guidance with source links so users can verify
 
 ---
 
 ## How It Solves These Problems
 
-AskKSA uses **RAG** (Retrieval-Augmented Generation):
+AskKSA uses **RAG** (Retrieval-Augmented Generation) with an **offline ingestion pipeline** and an online chat UI:
 
-1. User asks a question (English or Urdu)  
-2. Query is embedded using **BGE-M3**  
-3. FAISS retrieves the top-K relevant chunks  
-4. Gemini 2.5 Flash receives the injected context  
-5. The model generates a grounded, verified answer  
-6. The UI displays full answer + sources  
+1. User asks a question (in English or Urdu).  
+2. The query is embedded using **BGE-M3**.  
+3. The **Chroma** collection is queried to retrieve the top-K most relevant chunks (with titles, URLs, and scores).  
+4. Gemini 2.5 Flash receives a prompt that includes:
+   - Language rule (English vs Urdu)  
+   - System safety instructions  
+   - Retrieved context (chunks + metadata)  
+   - The user’s question  
+5. Gemini generates a grounded answer based on the context.  
+6. The UI displays:
+   - The final answer  
+   - The underlying sources (title, URL, similarity score)
 
-This ensures:
-
-- ❌ No hallucinations  
-- ❌ No invented rules  
-- ✔ 100% context-grounded accuracy  
+This design keeps the model focused on verified content and makes it easy for users to inspect where an answer came from.
 
 ---
 
@@ -110,23 +119,23 @@ This ensures:
 ### ⭐ Core Features
 
 - Fully bilingual (English + Urdu)  
-- Auto language detection  
+- Auto language detection (Urdu script vs Latin)  
 - Native Urdu rendering (Noto Nastaliq Urdu + RTL alignment)  
-- “Helpful / Not Helpful” feedback system  
-- Source links + similarity scores  
-- Persistent chat history  
-- Modern Streamlit UI with avatars  
+- “Helpful / Not Helpful” feedback for each answer  
+- Sources sidebar with titles, links, and similarity scores  
+- Persistent chat history within the session  
+- Clean Streamlit chat UI with avatars  
 
 ### ⚙️ Technical Features
 
-- Modular architecture  
-- Sentence Transformers embeddings  
-- FAISS vector search  
-- Google Gemini 2.5 Flash model  
-- Cached model/index loading  
-- Extendable prompts via `prompts.py`  
-- Configurable RAG pipeline via `config.py`  
-- Swap models or dataset instantly  
+- Modular RAG architecture (separate ingestion, retrieval, and UI layers)  
+- SentenceTransformers **BGE-M3** embeddings  
+- **Chroma** vector database for semantic retrieval  
+- Google Gemini 2.5 Flash model for answer generation  
+- Cached model & vector DB client loading for performance  
+- Centralized prompts via `prompts.py`  
+- Config-driven behavior via `config.py` (model name, paths, etc.)  
+- Debug panel to inspect raw retrieval results (documents, metadata, scores)  
 
 ---
 
@@ -138,15 +147,19 @@ This ensures:
 - Google Fonts (Noto Nastaliq Urdu)
 
 ### 🔹 **Backend / AI**
-- Google Gemini 2.5 Flash  
+- Google Gemini 2.5 Flash (via `genai` client)  
 - Sentence Transformers (BAAI/bge-m3)  
-- FAISS vector DB  
+- Python 3.10+
 
-### 🔹 **RAG Data**
-- `faiss_index_ip.bin`  
-- `chunks.json`  
-- `chunks_metadata.json`  
-- Curated Absher/official content dataset  
+### 🔹 **RAG / Data Layer**
+- **Chroma** persistent vector database (document embeddings + metadata)  
+- Offline ingestion scripts:
+  - Scraping (Playwright + BeautifulSoup)  
+  - Markdown frontmatter parsing (`title`, `source_url`, `scraped_at`)  
+  - Chunking & metadata enrichment  
+  - Embedding with BGE-M3 and writing to Chroma  
+
+(Older FAISS + `chunks.json` / `chunks_metadata.json` artifacts have been replaced by this Chroma-based workflow.)
 
 ---
 
@@ -163,13 +176,14 @@ This ensures:
              └────────────────────────┘
                           │
                           ▼
-               ┌─────────────────────┐
-               │   FAISS Retrieval   │
-               └─────────────────────┘
+         ┌────────────────────────────────┐
+         │  Chroma Vector DB Retrieval    │
+         │ (Top-K context + metadata)     │
+         └────────────────────────────────┘
                           │
                           ▼
        ┌──────────────────────────────────────┐
-       │ Injected Context (Top-K Absher Data) │
+       │ Prompt: Lang rule + safety + context │
        └──────────────────────────────────────┘
                           │
                           ▼
@@ -179,7 +193,7 @@ This ensures:
                           │
                           ▼
            ┌──────────────────────────────┐
-           │ Answer + Sources + Language  │
+           │ Answer + Sources (UI layer)  │
            └──────────────────────────────┘
 ```
 
@@ -190,32 +204,33 @@ This ensures:
 To ensure scalability and maintainability, AskKSA now uses a **clean modular architecture**:
 
 ```text
-askksa/
+ASK_KSA/
 │
-├── app.py                # Streamlit UI only
-├── config.py             # Central configuration (paths, models, constants)
+├── .streamlit/           # Streamlit config + secrets.toml
+├── data/                 # Markdown publications and source data
+├── vector_db/            # Persistent Chroma vector database (generated)
 │
-├── data_loader.py        # Loads FAISS index, embeddings, chunks, metadata
-├── rag_core.py           # Retrieval + context builder + answer generator
+├── app.py                # Streamlit UI (chat, sidebar, debug tools)
+├── config.py             # Central configuration (paths, model names, constants)
+├── data_loader.py        # Loads embedding model + Chroma collection
 ├── llm_client.py         # Gemini client + unified LLM interface
 ├── prompts.py            # Prompt templates and language rules
+├── rag_core.py           # Retrieval, context building, answer generation
+├── scrapping.py          # Scraping / Playwright scripts (offline data collection)
+├── utils.py              # Helpers (markdown loading, cleaning, slugify, seeding)
+├── vector_db_ingest.py   # Offline ingestion: build/update Chroma vector DB
 │
-├── faiss_index_ip.bin    # FAISS vector DB
-├── chunks.json           # RAG text chunks
-├── chunks_metadata.json  # Chunk metadata (titles, URLs)
-│
-├── AskKSA_Logo.png       # Branding asset
-├── requirements.txt      # Dependencies
+├── requirements.txt      # Python dependencies
+├── LICENSE.txt           # License
 └── README.md             # Documentation
 ```
 
 This structure allows:
 
-* Swapping datasets without code changes
-* Changing LLM models by editing one file
-* Editing prompts without touching logic
-* Adding future languages easily
-* Clean unit testing
+* Swapping datasets by re-running the ingestion script
+* Changing LLM models from a single config location
+* Editing prompts without touching retrieval logic
+* Adding languages or new domains without breaking the core pipeline
 
 ---
 
@@ -261,6 +276,17 @@ pip install -r requirements.txt
 set GOOGLE_API_KEY="your_key_here"
 ```
 
+### 5. (Optional) Build / refresh the vector DB
+
+If you want to regenerate the vector database locally:
+
+```bash
+python vector_db_ingest.py
+```
+
+This will read the markdown publications, chunk and embed them, and populate the `vector_db/` directory.
+
+
 ### 5. Run locally
 
 ```bash
@@ -273,3 +299,15 @@ streamlit run app.py
 
 🚀 **Try AskKSA here:**
 👉 [https://askksa.streamlit.app/](https://askksa.streamlit.app/)
+
+---
+
+## Safety & Limitations
+
+AskKSA is an informational assistant, not an official Saudi government service and not a legal advisor. It focuses on common Iqama/visa/Absher tasks and uses a curated, periodically updated dataset, but:
+
+* Some answers may become outdated if policies change.
+* Urdu wording and nuance may occasionally be less polished than English.
+* The app depends on an external LLM API (Gemini), which can sometimes be slow or temporarily unavailable.
+
+For high-impact or time-sensitive decisions (fines, residency violations, disputes, etc.), always double-check with official government portals or a qualified professional before acting on any answer.
