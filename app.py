@@ -52,7 +52,7 @@ def main() -> None:
     # All heavy lifting (embedding model, FAISS index, chunks, metadata)
     # is now handled in data_loader.load_resources().
     try:
-        embed_model, index, all_chunks, all_chunks_metadata = load_resources()
+        embed_model, collection = load_resources()
     except Exception as e:
         st.error(f"❌ Failed to load resources: {str(e)}")
         st.stop()
@@ -102,16 +102,21 @@ def main() -> None:
         st.markdown("---")
         st.markdown("### 📚 Sources used (last answer)")
         if st.session_state.last_retrieved:
-            for r in st.session_state.last_retrieved:
-                title = r.get("article_title", "Unknown")
-                url = r.get("url", "")
+            for i, r in enumerate(st.session_state.last_retrieved, start=1):
+                # Use new keys from Chroma-backed retrieval
+                title = r.get("title") or r.get("article_title", "Unknown")
+                url = r.get("source_url") or r.get("url", "")
                 score = r.get("score", None)
-                st.markdown(f"**{r['rank']}. {title}**")
+
+                st.markdown(f"**{i}. {title}**")  # use index as rank instead of r['rank']
                 if url:
                     st.caption(f"[Source link]({url})")
                 if score is not None:
                     st.caption(f"Similarity score: `{score:.4f}`")
-                st.text(r.get("text_preview", ""))
+
+                # Use content as a preview fallback
+                preview = r.get("text_preview") or r.get("content", "")[:200]
+                st.markdown(preview)
                 st.markdown("<hr>", unsafe_allow_html=True)
         else:
             st.caption("Sources will appear here after you ask a question.")
@@ -164,11 +169,9 @@ def main() -> None:
             with st.spinner("Thinking..."):
                 answer, retrieved = answer_question(
                     user_input,
-                    st.session_state.chat_history,
-                    embed_model,
-                    index,
-                    all_chunks,
-                    all_chunks_metadata,
+                    embed_model=embed_model,
+                    collection=collection,
+                    chat_history=st.session_state.chat_history,
                     k=5,
                 )
 

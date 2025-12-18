@@ -1,9 +1,6 @@
-# rag_core.py
 import re
-from typing import List, Dict, Tuple
-
 import numpy as np
-
+from typing import List, Dict, Tuple
 from llm_client import chat as llm_chat
 from prompts import (
     BASE_SYSTEM_INSTRUCTION,
@@ -18,46 +15,65 @@ def is_urdu_text(text: str) -> bool:
     return bool(re.search(r"[\u0600-\u06FF]", text))
 
 
+def strip_markdown_for_preview(text: str) -> str:
+    """
+    Clean text for display in previews:
+    - remove image markdown: ![alt](url)
+    - convert link markdown [text](url) -> text
+    - collapse extra whitespace
+    """
+    # Remove image markdown: ![alt](url)
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", text)
+    # Replace links [text](url) with just "text"
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    # Collapse whitespace/newlines
+    text = " ".join(text.split())
+    return text
+
 def retrieve(
     query: str,
-    model,
-    index,
-    all_chunks: List[str],
-    all_chunks_metadata: List[Dict],
+    embed_model,
+    collection,
     k: int = 5,
 ) -> List[Dict]:
     """
-    Encode the query, search FAISS index, and return top-k chunks
-    with metadata and a short preview.
+    Retrieve top-k chunks from Chroma for a given query.
     """
-    q = model.encode(
-        [query],
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    ).astype("float32")
+    # 1) Embed query using the same model as ingestion (BGE-M3)
+    q_emb = embed_model.encode([query], normalize_embeddings=True)
+    q_emb = np.array(q_emb, dtype="float32")  # Chroma expects float32
 
-    scores, ids = index.search(q, k)
-    ids = ids[0]
-    scores = scores[0]
+    # 2) Query Chroma using query_embeddings (NOT query_texts, because we pre-embedded docs)
+    results = collection.query(
+        query_embeddings=q_emb,
+        n_results=k,
+    )
 
-    results: List[Dict] = []
-    for rank, (idx, sc) in enumerate(zip(ids, scores), start=1):
-        meta = all_chunks_metadata[idx]
-        text = all_chunks[idx]
-        preview = text[:200].replace("\n", " ")
-        if len(text) > 200:
-            preview += "..."
-        results.append(
+    docs = results.get("documents", [[]])[0]    # list[str]
+    metas = results.get("metadatas", [[]])[0]   # list[dict]
+    dists = results.get("distances", [[]])[0]   # list[float] (similarity metric)
+
+    retrieved = []
+    for doc, meta, dist in zip(docs, metas, dists):
+
+        # Build a clean preview only (do not modify the stored content)
+        clean = strip_markdown_for_preview(doc)
+        preview = clean[:200]
+        if len(clean) > 200:
+            preview += "…"
+        
+        retrieved.append(
             {
-                "rank": rank,
-                "score": float(sc),
-                "chunk_index": int(idx),
-                "article_title": meta.get("article_title", "Unknown"),
-                "url": meta.get("url", ""),
+                "content": doc,
+                "title": meta.get("title", ""),
+                "source_url": meta.get("source_url"),
+                "path": meta.get("path"),
+                "scraped_at": meta.get("scraped_at"),
+                "score": float(dist),
                 "text_preview": preview,
             }
         )
-    return results
+    return retrieved
 
 
 def build_context_for_prompt(
@@ -80,51 +96,41 @@ def build_context_for_prompt(
 
 def answer_question(
     query: str,
-    chat_history: List[Dict[str, object]],
-    model,
-    index,
-    all_chunks: List[str],
-    all_chunks_metadata: List[Dict],
+    embed_model,
+    collection,
+    chat_history: List[Dict] | None = None,
     k: int = 5,
 ) -> Tuple[str, List[Dict]]:
     """
-    - Retrieve relevant chunks.
-    - Build context.
-    - Create messages with system + recent chat history + contextualized user prompt.
-    - Call the LLM.
-    - Return (answer_text, retrieval_results).
+    End-to-end RAG answer: retrieve from Chroma and call the LLM.
     """
-    # 1) Retrieve
-    retrieved = retrieve(query, model, index, all_chunks, all_chunks_metadata, k=k)
+    # 1) Retrieve relevant chunks
+    retrieved = retrieve(query, embed_model, collection, k=k)
 
-    # 2) Build context text from retrieved docs
-    context_text = build_context_for_prompt(retrieved, all_chunks)
+    # 2) Build context text from retrieved chunks
+    context_parts = []
+    for item in retrieved:
+        title = item.get("title") or "Source"
+        source_url = item.get("source_url")
+        header = f"### {title}"
+        if source_url:
+            header += f" ({source_url})"
+        context_parts.append(f"{header}\n\n{item['content']}")
 
-    # 3) Language rule based on user query
-    is_query_urdu = is_urdu_text(query)
-    lang_rule = LANG_RULE_URDU if is_query_urdu else LANG_RULE_EN
+    context_text = "\n\n---\n\n".join(context_parts) if context_parts else "No relevant context retrieved."
 
-    system_message = {
+    # 3) Language rule: detect Urdu vs English
+    lang_rule = LANG_RULE_URDU if is_urdu_text(query) else LANG_RULE_EN
+
+    system_msg = {
         "role": "system",
         "content": BASE_SYSTEM_INSTRUCTION.format(language_rule=lang_rule),
     }
 
-    messages: List[Dict[str, str]] = [system_message]
+    messages: List[Dict] = [system_msg]
 
-    # 4) Add recent chat history (strip UI-only fields like is_urdu)
-    for turn in chat_history[-6:]:
-        role = turn.get("role")
-        content = turn.get("content")
-        if role not in ("user", "assistant") or not isinstance(content, str):
-            continue
+    # optionally add filtered chat_history here...
 
-        # keep only turns that match the query's language
-        if is_urdu_text(content) != is_query_urdu:
-            continue
-
-        messages.append({"role": role, "content": content})
-
-    # 5) User message containing context + question
     user_message = {
         "role": "user",
         "content": USER_PROMPT_TEMPLATE.format(
@@ -134,7 +140,7 @@ def answer_question(
     }
     messages.append(user_message)
 
-    # 6) Call LLM with error handling
+    # 4) Call LLM with error handling
     try:
         reply = llm_chat(messages)
     except Exception as e:

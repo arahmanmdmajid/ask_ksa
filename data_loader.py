@@ -3,20 +3,12 @@ import json
 import os
 from pathlib import Path
 
+import chromadb
 import faiss
 import streamlit as st
 from sentence_transformers import SentenceTransformer
 
-# ---------- CONFIG (data + model) ----------
-
-BASE_DIR = Path(__file__).resolve().parent
-
-EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "BAAI/bge-m3")
-
-INDEX_PATH = Path(os.getenv("INDEX_PATH", BASE_DIR / "faiss_index_ip.bin"))
-CHUNKS_PATH = Path(os.getenv("CHUNKS_PATH", BASE_DIR / "chunks.json"))
-META_PATH = Path(os.getenv("META_PATH", BASE_DIR / "chunks_metadata.json"))
-
+from config import EMBED_MODEL_NAME, VECTOR_DB_DIR, CHROMA_COLLECTION_NAME
 
 def _check_files_exist(paths):
     """Raise a clear error if any of the needed files is missing."""
@@ -25,31 +17,19 @@ def _check_files_exist(paths):
         raise FileNotFoundError("Missing files: " + ", ".join(missing))
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_resources():
     """
-    Load and cache:
-    - text chunks
-    - metadata
-    - FAISS index
-    - embedding model (SentenceTransformer)
+    Load the embedding model and Chroma collection used for RAG.
+    Called once per Streamlit session and cached.
     """
-    _check_files_exist([INDEX_PATH, CHUNKS_PATH, META_PATH])
-
-    # Load chunks and metadata with error handling
-    try:
-        with open(CHUNKS_PATH, "r", encoding="utf-8") as f:
-            all_chunks = json.load(f)
-
-        with open(META_PATH, "r", encoding="utf-8") as f:
-            all_chunks_metadata = json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
-        raise ValueError(f"Failed to load JSON files: {str(e)}")
-
-    # Load FAISS index
-    index = faiss.read_index(str(INDEX_PATH))
 
     # Load embedding model (for query encoding only)
     embed_model = SentenceTransformer(EMBED_MODEL_NAME)
 
-    return embed_model, index, all_chunks, all_chunks_metadata
+    # 2) Connect to the persistent Chroma DB
+    client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
+    collection = client.get_collection(name=CHROMA_COLLECTION_NAME)
+
+    # return embed_model, index, all_chunks, all_chunks_metadata
+    return embed_model, collection
